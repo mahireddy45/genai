@@ -1,0 +1,21 @@
+# LLM & API
+langchain>=0.1.0
+openai>=1.0.0
+
+# RAG Pipeline
+pypdf>=4.0.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# LLMs
+
+
+# Web & CLI
+streamlit>=1.28.0
+python-dotenv>=1.0.0
+
+# Development & Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+pylint>=3.0.0
