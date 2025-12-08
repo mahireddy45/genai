@@ -57,7 +57,7 @@ st.markdown("""
 
 def main():
     """Main Streamlit app."""
-    st.title("📚 Local RAG Chatbot")
+    st.title("📚 RAG Chatbot")
     st.markdown("Chat with your documents")
 
     # Sidebar configuration
@@ -221,140 +221,140 @@ def main():
             st.error(f"Error: {e}")
             logger.exception("Error in chat tab")
 
-    # # Ingest Tab
-    # with tab2:
-    #     st.subheader("Ingest PDF Documents")
+    # Ingest Tab
+    with tab2:
+        st.subheader("Ingest PDF Documents")
 
-    #     col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns([1, 1])
 
-    #     with col1:
-    #         st.write("**Option 1: Upload Files**")
-    #         uploaded_files = st.file_uploader(
-    #             "Upload PDF files",
-    #             type="pdf",
-    #             accept_multiple_files=True,
-    #             help="Select one or more PDF files to ingest"
-    #         )
+        with col1:
+            st.write("**Option 1: Upload Files**")
+            uploaded_files = st.file_uploader(
+                "Upload PDF files",
+                type="pdf",
+                accept_multiple_files=True,
+                help="Select one or more PDF files to ingest"
+            )
 
-    #         if uploaded_files:
-    #             if st.button("📥 Ingest Uploaded Files"):
-    #                 with st.spinner("Processing..."):
-    #                     try:
-    #                         all_documents = []
+            if uploaded_files:
+                if st.button("📥 Ingest Uploaded Files"):
+                    with st.spinner("Processing..."):
+                        try:
+                            all_documents = []
 
-    #                         # Save uploaded files to temp directory
-    #                         for uploaded_file in uploaded_files:
-    #                             with tempfile.NamedTemporaryFile(
-    #                                 delete=False,
-    #                                 suffix=".pdf"
-    #                             ) as tmp_file:
-    #                                 tmp_file.write(uploaded_file.getbuffer())
-    #                                 tmp_path = tmp_file.name
+                            # Save uploaded files to temp directory
+                            for uploaded_file in uploaded_files:
+                                with tempfile.NamedTemporaryFile(
+                                    delete=False,
+                                    suffix=".pdf"
+                                ) as tmp_file:
+                                    tmp_file.write(uploaded_file.getbuffer())
+                                    tmp_path = tmp_file.name
 
-    #                             # Load PDF
-    #                             docs = load_and_process_pdfs(
-    #                                 tmp_path,
-    #                                 chunk_size=st.session_state.get("chunk_size", 500),
-    #                                 chunk_overlap=st.session_state.get("chunk_overlap", 50)
-    #                             )
-    #                             all_documents.extend(docs)
+                                # Load PDF
+                                docs = load_and_process_pdfs(
+                                    tmp_path,
+                                    chunk_size=st.session_state.get("chunk_size", 500),
+                                    chunk_overlap=st.session_state.get("chunk_overlap", 50)
+                                )
+                                all_documents.extend(docs)
 
-    #                             # Clean up
-    #                             os.unlink(tmp_path)
+                                # Clean up
+                                os.unlink(tmp_path)
 
-    #                         if all_documents:
-    #                             # Add to vector store
-    #                             vector_store = init_vector_store(db_path, embedding_model)
-    #                             added = vector_store.add_documents(all_documents)
-    #                             st.success(f"✓ Added {added} document chunks")
-    #                         else:
-    #                             st.error("No documents extracted from PDFs")
+                            if all_documents:
+                                # Add to vector store
+                                vector_store = init_vector_store(db_path, embedding_model)
+                                added = vector_store.add_documents(all_documents)
+                                st.success(f"✓ Added {added} document chunks")
+                            else:
+                                st.error("No documents extracted from PDFs")
 
-    #                     except Exception as e:
-    #                         st.error(f"Error: {e}")
-    #                         logger.exception("Error ingesting files")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                            logger.exception("Error ingesting files")
 
-    #     with col2:
-    #         st.write("**Option 2: Ingest from Directory**")
-    #         pdf_directory = st.text_input(
-    #             "PDF Directory Path",
-    #             help="Full path to directory containing PDFs"
-    #         )
+        with col2:
+            st.write("**Option 2: Ingest from Directory**")
+            pdf_directory = st.text_input(
+                "PDF Directory Path",
+                help="Full path to directory containing PDFs"
+            )
 
-    #         chunk_size = st.number_input("Chunk Size", value=500, min_value=100)
-    #         chunk_overlap = st.number_input("Chunk Overlap", value=50, min_value=0)
+            chunk_size = st.number_input("Chunk Size", value=500, min_value=100)
+            chunk_overlap = st.number_input("Chunk Overlap", value=50, min_value=0)
 
-    #         st.session_state.chunk_size = chunk_size
-    #         st.session_state.chunk_overlap = chunk_overlap
+            st.session_state.chunk_size = chunk_size
+            st.session_state.chunk_overlap = chunk_overlap
 
-    #         if st.button("📥 Ingest from Directory"):
-    #             if not pdf_directory:
-    #                 st.error("Please enter a directory path")
-    #             else:
-    #                 with st.spinner("Processing PDFs..."):
-    #                     try:
-    #                         documents = load_and_process_pdfs(
-    #                             pdf_directory,
-    #                             chunk_size=chunk_size,
-    #                             chunk_overlap=chunk_overlap
-    #                         )
+            if st.button("📥 Ingest from Directory"):
+                if not pdf_directory:
+                    st.error("Please enter a directory path")
+                else:
+                    with st.spinner("Processing PDFs..."):
+                        try:
+                            documents = load_and_process_pdfs(
+                                pdf_directory,
+                                chunk_size=chunk_size,
+                                chunk_overlap=chunk_overlap
+                            )
 
-    #                         if documents:
-    #                             vector_store = init_vector_store(db_path, embedding_model)
-    #                             added = vector_store.add_documents(documents)
-    #                             st.success(f"✓ Added {added} document chunks")
-    #                         else:
-    #                             st.error("No PDFs found in directory")
+                            if documents:
+                                vector_store = init_vector_store(db_path, embedding_model)
+                                added = vector_store.add_documents(documents)
+                                st.success(f"✓ Added {added} document chunks")
+                            else:
+                                st.error("No PDFs found in directory")
 
-    #                     except Exception as e:
-    #                         st.error(f"Error: {e}")
-    #                         logger.exception("Error ingesting directory")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                            logger.exception("Error ingesting directory")
 
-    # # Info Tab
-    # with tab3:
-    #     st.subheader("System Information")
+    # Info Tab
+    with tab3:
+        st.subheader("System Information")
 
-    #     try:
-    #         vector_store = init_vector_store(db_path, embedding_model)
-    #         info = vector_store.get_collection_info()
+        try:
+            vector_store = init_vector_store(db_path, embedding_model)
+            info = vector_store.get_collection_info()
 
-    #         col1, col2, col3 = st.columns(3)
+            col1, col2, col3 = st.columns(3)
 
-    #         with col1:
-    #             st.metric("Documents", info["document_count"])
+            with col1:
+                st.metric("Documents", info["document_count"])
 
-    #         with col2:
-    #             st.text(f"Collection: {info['collection_name']}")
+            with col2:
+                st.text(f"Collection: {info['collection_name']}")
 
-    #         with col3:
-    #             st.text(f"Database: {info['db_path']}")
+            with col3:
+                st.text(f"Database: {info['db_path']}")
 
-    #         st.divider()
+            st.divider()
 
-    #         st.subheader("Available Models")
+            st.subheader("Available Models")
 
-    #         col1, col2 = st.columns(2)
+            col1, col2 = st.columns(2)
 
-    #         with col1:
-    #             st.write("**GPT4All Models** (auto-downloaded):")
-    #             for model, desc in LocalLLM.get_gpt4all_models().items():
-    #                 st.caption(f"• {model}: {desc}")
+            with col1:
+                st.write("**GPT4All Models** (auto-downloaded):")
+                for model, desc in LocalLLM.get_gpt4all_models().items():
+                    st.caption(f"• {model}: {desc}")
 
-    #         with col2:
-    #             st.write("**Ollama Models** (requires pull):")
-    #             for model, desc in LocalLLM.get_ollama_models().items():
-    #                 st.caption(f"• {model}: {desc}")
+            with col2:
+                st.write("**Ollama Models** (requires pull):")
+                for model, desc in LocalLLM.get_ollama_models().items():
+                    st.caption(f"• {model}: {desc}")
 
-    #         st.divider()
+            st.divider()
 
-    #         st.subheader("Embedding Models")
-    #         from src.embeddings import LocalEmbeddings
+            st.subheader("Embedding Models")
+            from src.embeddings import LocalEmbeddings
 
-    #         for model, desc in LocalEmbeddings.get_available_models().items():
-    #             st.caption(f"• {model}: {desc}")
+            for model, desc in LocalEmbeddings.get_available_models().items():
+                st.caption(f"• {model}: {desc}")
 
-    #     except Exception as e:
-    #         st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 
 if __name__ == "__main__":
