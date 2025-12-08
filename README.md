@@ -1,3 +1,4 @@
+Python Virtual Environment Setup:
 Open the Integrated Terminal
 
 Navigate to View > Terminal or press `Ctrl + `` to open the terminal at the bottom of the IDE.
@@ -17,6 +18,9 @@ Install Required Packages
 With the virtual environment active, install dependencies using pip:
 
 pip install <package_name>
+
+Run pip upgrade
+python.exe -m pip install --upgrade pip
 
 Example:
 pip install flask
