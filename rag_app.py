@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Set page config
 st.set_page_config(
-    page_title="RAG Chatbot",
+    page_title="Local RAG Chatbot",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -57,8 +57,8 @@ st.markdown("""
 
 def main():
     """Main Streamlit app."""
-    st.title("📚 RAG Chatbot")
-    st.markdown("Chat with your documents")
+    st.title("📚 Local RAG Chatbot")
+    st.markdown("Chat with your PDF documents using local LLMs (no API keys needed)")
 
     # Sidebar configuration
     with st.sidebar:
