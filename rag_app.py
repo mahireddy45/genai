@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Set page config
 st.set_page_config(
-    page_title="Local RAG Chatbot",
+    page_title="RAG Chatbot",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
