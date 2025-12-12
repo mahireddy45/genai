@@ -9,6 +9,7 @@ from .schemas import DocumentMeta, IngestedDocument
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+os.environ["OPENAI_API_KEY"] = "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"
 
 try:
     from openai import OpenAI
@@ -22,27 +23,49 @@ def _get_openai_client():
     
     # Try to get API key from environment first, then fall back to secret.py
     key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
-    if not key:
-        raise RuntimeError("OPENAI_API_KEY not found in environment variables or config/secret.py")
+    
+    if not key or "YOUR-ACTUAL" in key:
+        raise RuntimeError(
+            "\n" + "="*70 + "\n"
+            "❌ OPENAI_API_KEY is not configured or is invalid!\n\n"
+            "To use the RAG application:\n"
+            "1. Get your API key: https://platform.openai.com/api-keys\n"
+            "2. Update .env file: OPENAI_API_KEY=sk-proj-YOUR-KEY\n"
+            "3. Or set env var: export OPENAI_API_KEY=sk-proj-YOUR-KEY\n"
+            "4. Restart the application\n"
+            "="*70 + "\n"
+        )
     
     # Instantiate client with explicit api_key
     return OpenAI(api_key=key)
 
 
 def validate_openai_key(model: str = "text-embedding-3-small") -> bool:
+    """Validate OpenAI API key by making a test API call.
+    
+    Args:
+        model: Model to use for validation test
+        
+    Returns:
+        True if API key is valid, False otherwise
+    """
     try:
         client = _get_openai_client()
     except Exception as e:
-        logger.error("OpenAI client could not be created for validation: %s", e)
+        logger.error("❌ OpenAI client could not be created: %s", str(e)[:200])
         return False
 
     try:
-        # small test payload
+        # Make a small test payload to validate key
         resp = client.embeddings.create(model=model, input=["test"])
-        # If the call did not raise, assume key is valid
+        logger.info("✅ OpenAI API key validated successfully")
         return True
     except Exception as exc:
-        logger.exception("OpenAI key validation failed: %s", exc)
+        error_msg = str(exc)
+        if "401" in error_msg or "invalid_api_key" in error_msg:
+            logger.error("❌ OpenAI API key is invalid or expired. Error: %s", error_msg[:200])
+        else:
+            logger.error("❌ OpenAI API validation failed: %s", error_msg[:200])
         return False
 
 # Function to chunk documents with dynamic chunk size and overlap
@@ -50,6 +73,7 @@ def chunk_documents(documents, chunk_size: int = 1000, chunk_overlap: int = 200)
     # Initialize the text splitter with dynamic chunk size and overlap
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     chunks = []
+    logger.info("Chunking documents into size %d with overlap %d", chunk_size, chunk_overlap)
     for i, doc in enumerate(documents):
         # Handle both LangChain Document and custom IngestedDocument
         text = doc.page_content if hasattr(doc, 'page_content') else str(doc)
@@ -80,6 +104,7 @@ def chunk_documents(documents, chunk_size: int = 1000, chunk_overlap: int = 200)
 
 # Function to generate embeddings
 def generate_embeddings(docs: List, model: str = "text-embedding-3-large", chunk_size: int = 1000, chunk_overlap: int = 200) -> List[dict]:
+    logger.info("chucksize: %d, chunk_overlap: %d", chunk_size, chunk_overlap)
     chunks = chunk_documents(docs, chunk_size, chunk_overlap)
     embedding_model = OpenAIEmbeddings(model=model)
     for chunk in chunks:

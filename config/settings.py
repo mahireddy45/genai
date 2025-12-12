@@ -12,7 +12,23 @@ else:
     load_dotenv()
 
 # OpenAI Configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY or "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" in OPENAI_API_KEY:
+    import warnings
+    warnings.warn(
+        "\n" + "="*70 + "\n"
+        "⚠️  WARNING: OPENAI_API_KEY is not configured!\n\n"
+        "To use the RAG application, you need to:\n\n"
+        "1. Get your API key from: https://platform.openai.com/api-keys\n"
+        "2. Set it in .env file:\n"
+        "   OPENAI_API_KEY=sk-proj-YOUR-ACTUAL-KEY\n"
+        "3. Or set environment variable:\n"
+        "   export OPENAI_API_KEY=sk-proj-YOUR-ACTUAL-KEY\n"
+        "4. Restart the application\n\n"
+        "Without a valid API key, document ingestion and chat will not work.\n"
+        "="*70 + "\n",
+        RuntimeWarning
+    )
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gpt-4o")
 DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.3"))
 

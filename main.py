@@ -28,6 +28,8 @@ setup_logging(
 )
 logger = logging.getLogger(__name__)
 
+if 'qa_chain' not in st.session_state:
+    st.session_state.qa_chain = None
 # Quick validate OpenAI API key (if available) so user sees a clear message
 try:
     from src.embeddings import validate_openai_key
@@ -41,8 +43,7 @@ except Exception as e:
 from src.app_core import (
     process_uploaded_files,
     process_directory,
-    answer_question,
-    answer_without_context,
+    create_simple_rag_chain,
 )
 
 # Set page config
@@ -79,7 +80,7 @@ def main():
 
         # Embedding settings
         st.subheader("Embeddings")
-        embedding_model = st.selectbox("Embedding Model", ["text-embedding-3-large"])
+        embedding_model = st.selectbox("Embedding Model", ["text-embedding-3-small", "text-embedding-3-large"])
 
         # LLM settings
         st.subheader("GPT Model")
@@ -97,61 +98,66 @@ def main():
 
     # Chat Tab
     with tab1:
-        try:
-            # Chat history
-            if "messages" not in st.session_state:
-                st.session_state.messages = []
+        # Chat history
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-            # Display chat history
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+        # Display chat history
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-            # Chat input (automatically positioned at bottom by Streamlit)
-            question = st.chat_input("Ask a question ...")
+        # Chat input (automatically positioned at bottom by Streamlit)
+        question = st.chat_input("Ask a question ...")
 
-            if question:
-                # Add user message to history
-                st.session_state.messages.append({"role": "user", "content": question})
+        if question:
+            # Add user message to history
+            st.session_state.messages.append({"role": "user", "content": question})
 
-                with st.chat_message("user"):
-                    st.markdown(question)
-                
-                with st.chat_message("assistant"):
-                    with st.spinner("🤖 Thinking..."):
-                        result = answer_without_context(question, max_tokens=max_tokens, temperature=temperature, llm_model=llm_backend)
+            with st.chat_message("user"):
+                st.markdown(question)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("🤖 Thinking..."):
+                    try:
+                        # Create RAG chain and invoke with question
+                        chain = create_simple_rag_chain(
+                            db_path=db_path,
+                            question=question,
+                            llm_model=llm_backend,
+                            temperature=temperature,
+                            n_retrieve=n_retrieve,
+                            max_tokens=max_tokens
+                        )
+                        
+                        # Use invoke() to get response
+                        response = chain.invoke({
+                            "context": "",
+                            "question": question
+                        })
+                        
+                        # Extract answer text
+                        answer_text = response.content if hasattr(response, "content") else str(response)
                         
                         # Display answer
-                        st.markdown(result["answer"])
-
-                        # Display sources (may contain metadata dicts)
-                        if result.get("sources"):
-                            with st.expander("📖 Sources"):
-                                for i, source in enumerate(result["sources"], 1):
-                                    if isinstance(source, dict):
-                                        parts = [f"{k}: {v}" for k, v in source.items()]
-                                        st.caption(f"{i}. " + ", ".join(parts))
-                                    else:
-                                        st.caption(f"{i}. {source}")
-
-                # Add assistant message to history
-                st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-            logger.exception("Error in chat tab")
-
+                        st.markdown(answer_text)
+                        
+                        # Add assistant message to history
+                        st.session_state.messages.append({"role": "assistant", "content": answer_text})
+                    except Exception as e:
+                        error_msg = f"Error generating answer: {str(e)}"
+                        st.error(error_msg)
+                        logger.exception("Error in RAG chain invocation")
     # Ingest Tab
     with tab2:
         st.subheader("Ingest Documents")
-
         col1, col2 = st.columns([1, 1])
 
         with col1:
             st.write("**Option 1: Upload Files**")
             uploaded_files = st.file_uploader(
                 "Upload files (PDF, DOCX, TXT, images)",
-                type=["pdf", "docx", "png", "jpg", "jpeg", "tiff", "txt"],
+                type=["pdf", "docx", "png", "jpg", "jpeg", "tiff", "txt", "md", "doc"],
                 accept_multiple_files=True,
                 help="Select one or more files to ingest"
             )

@@ -20,9 +20,12 @@ IF "%OPENAI_API_KEY%"=="" (
   echo.
 )
 
+REM Set OpenAI API Key
+set OPENAI_API_KEY=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
+
 REM Run the Streamlit app
 echo  Launching application...
 echo  The app will open in your default browser.
 echo  If not, navigate to: http://localhost:8501
 echo.
-streamlit run rag_app.py
+streamlit run main.py

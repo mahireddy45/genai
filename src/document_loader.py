@@ -47,14 +47,8 @@ def load_documents(files: List, llm_model: str) -> List[Document]:
 
             if suffix in [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".svg"]:
                 documents = load_image(file_path, llm_model)
+                docs.append(documents)
             else:            
-                if suffix in [".docx", ".doc"]:
-                    loader = Docx2txtLoader(file_path)
-                elif suffix in [".txt", ".md"]:
-                    loader = TextLoader(file_path)
-                elif suffix == ".pdf":
-                    loader = PyPDFLoader(file_path)
-
                 if suffix in [".docx", ".doc"]:
                     try:
                         # attempt to use the langchain loader (requires docx2txt)
@@ -85,9 +79,8 @@ def load_documents(files: List, llm_model: str) -> List[Document]:
                     doc.metadata["path"] = original_filename
                     doc.metadata["file_ext"] = suffix
                     doc.metadata["file_type"] = "document"
-
-            docs.extend(documents)
-
+                docs.extend(documents)
+                
         finally:
             try:
                 os.unlink(tmp_path)
