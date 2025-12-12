@@ -1,35 +1,54 @@
-"""Simple image loader with OCR using pytesseract.
-
-Returns list of ingested document chunks extracted from images.
-"""
-from __future__ import annotations
-from typing import List, Dict
+import base64
 from pathlib import Path
-from PIL import Image
-from .schemas import DocumentMeta, IngestedDocument
+import logging
 
+from langchain_core.messages import HumanMessage
+from langchain_core.documents import Document
+from langchain_openai import ChatOpenAI
+from .logging_config import get_logger
 
-def load_image(path: str, chunk_size: int = 500, chunk_overlap: int = 50) -> List[Dict]:
-    p = Path(path)
-    if not p.is_file():
-        return []
-    text = pytesseract.image_to_string(Image.open(p)) or ""
-    if not text.strip():
-        return []
+logger = get_logger(__name__)
 
-    # chunk text
-    results = []
-    start = 0
-    length = len(text)
-    idx = 1
-    while start < length:
-        end = min(start + chunk_size, length)
-        chunk = text[start:end].strip()
-        if chunk:
-            doc_id = f"{p.name}::c{idx}"
-            meta = DocumentMeta(filename=p.name, page=None, source=str(p), text_length=len(chunk))
-            results.append(IngestedDocument(id=doc_id, text=chunk, meta=meta).dict())
-            idx += 1
-        start = max(end - chunk_overlap, end)
+def encode_image_to_base64(image_path: str) -> str:
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
 
-    return results
+def get_image_description(image_path: str, llm_model: str) -> str:
+    logger.debug("Getting image description for %s using model %s", image_path, llm_model)
+    llm = ChatOpenAI(model=llm_model, temperature=0)
+    base64_image = encode_image_to_base64(image_path)
+
+    # Create multimodal message
+    message = HumanMessage(
+        content=[
+            {
+                "type": "text",
+                "text": "Describe this image in detail, focusing on key visual elements, text, and context that would be useful for retrieval."
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image}"
+                }
+            }
+        ]
+    )
+
+    response = llm.invoke([message])
+    return response.content
+
+def load_image(image_path: Path, llm_model: str) -> Document:
+    logger.info("Loading image: %s", image_path)
+    document = None
+
+    # Get image description
+    suffix = image_path.suffix.lower()
+    description = get_image_description(image_path, llm_model)
+
+    # Create document with metadata
+    document = Document(
+        page_content=description,
+        metadata = {"source": str(image_path.name), "path" : str(image_path), "file_ext": suffix, "file_type": "image"}
+    )
+
+    return document

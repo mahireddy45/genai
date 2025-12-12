@@ -5,22 +5,38 @@ Navigate to View > Terminal or press `Ctrl + `` to open the terminal at the bott
 
 Create a Virtual Environment
 Run the following command in the terminal: 
-python -m venv .venv 
+command 1: python -m venv .venv 
 
 This creates a .venv directory in your project folder containing the Python interpreter and necessary files.
 
 Activate the Virtual Environment
 Activate the environment using: 
+Command 2:
 Windows: .\.venv\Scripts\activate 
 macOS/Linux: source .venv/bin/activate
 
 Once activated, your terminal prompt will show (venv).
 Upgrade pip & Install Required Packages
 
-pip install --upgrade pip
+Command 3: pip install --upgrade pip
 
 With the virtual environment active, install dependencies using pip:
 pip install <package_name>
 
 Install packages from requirements.txt
-pip install -r requirements.txt
+command 4: pip install -r requirements.txt
+
+Multiple ways to have api key
+Set environment variable
+To set the key 
+$env:OPENAI_API_KEY = ""
+
+Or set permanently for your user:
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-REPLACE_WITH_VALID_KEY", "User")
+
+Create .env file adn add openaiapi key and use it
+.evn file content
+# OpenAI Configuration
+OPENAI_API_KEY=""
+
+use secret.py file and load it where ever you needed.

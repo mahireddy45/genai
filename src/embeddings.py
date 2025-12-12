@@ -1,10 +1,14 @@
-from __future__ import annotations
 import os
 from typing import List
 import time
 import logging
+from config.secret import OPENAI_API_KEY
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import OpenAIEmbeddings
+from .schemas import DocumentMeta, IngestedDocument
+from .logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 try:
     from openai import OpenAI
@@ -15,36 +19,70 @@ except Exception:  # pragma: no cover - optional dependency
 def _get_openai_client():
     if OpenAI is None:
         raise RuntimeError("openai package is not installed. Install 'openai' in requirements.txt")
-    key = os.getenv("OPENAI_API_KEY")
+    
+    # Try to get API key from environment first, then fall back to secret.py
+    key = os.getenv("OPENAI_API_KEY") or OPENAI_API_KEY
     if not key:
-        raise RuntimeError("OPENAI_API_KEY environment variable not set")
-    # Instantiate client; the client will read env vars if api_key not passed
+        raise RuntimeError("OPENAI_API_KEY not found in environment variables or config/secret.py")
+    
+    # Instantiate client with explicit api_key
     return OpenAI(api_key=key)
 
 
-def get_text_embeddings(texts: List[str], model: str = "text-embedding-3-large") -> List[List[float]]:
-    """Return embeddings for a list of texts using OpenAI.
+def validate_openai_key(model: str = "text-embedding-3-small") -> bool:
+    try:
+        client = _get_openai_client()
+    except Exception as e:
+        logger.error("OpenAI client could not be created for validation: %s", e)
+        return False
 
-    Args:
-        texts: list of input strings
-        model: embedding model name (default: text-embedding-3-large)
+    try:
+        # small test payload
+        resp = client.embeddings.create(model=model, input=["test"])
+        # If the call did not raise, assume key is valid
+        return True
+    except Exception as exc:
+        logger.exception("OpenAI key validation failed: %s", exc)
+        return False
 
-    Returns:
-        list of embedding vectors
-    """
-    _ensure_openai()
+# Function to chunk documents with dynamic chunk size and overlap
+def chunk_documents(documents, chunk_size: int = 1000, chunk_overlap: int = 200) -> List[dict]:
+    # Initialize the text splitter with dynamic chunk size and overlap
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    chunks = []
+    for i, doc in enumerate(documents):
+        # Handle both LangChain Document and custom IngestedDocument
+        text = doc.page_content if hasattr(doc, 'page_content') else str(doc)
+        metadata = doc.metadata if hasattr(doc, 'metadata') else {}
+        
+        # Sanitize metadata early: remove None values and non-string keys/values
+        sanitized_metadata = {}
+        for k, v in metadata.items():
+            if v is not None and isinstance(k, str):
+                # Convert non-string values to strings for ChromaDB compatibility
+                if isinstance(v, (str, int, float, bool)):
+                    sanitized_metadata[k] = v
+                else:
+                    sanitized_metadata[k] = str(v)
+        
+        split_texts = text_splitter.split_text(text)
+        for j, chunk in enumerate(split_texts):
+            chunks.append({
+                "id": f"doc_{i}_chunk_{j}",
+                "page_content": chunk,
+                "metadata": {
+                    "chunk_id": j,
+                    "chunk_length": len(chunk),
+                    **sanitized_metadata  # Merge sanitized metadata
+                }
+            })
+    return chunks
 
-    # OpenAI accepts up to a certain number of inputs; for simplicity
-    # we send texts in a single request. Retry basic transient errors.
-    tries = 3
-    client = _get_openai_client()
-    for attempt in range(tries):
-        try:
-            resp = client.embeddings.create(model=model, input=texts)
-            embeddings = [item["embedding"] for item in resp.data]
-            return embeddings
-        except Exception as exc:
-            logger.warning("Embedding request failed (attempt %s): %s", attempt + 1, exc)
-            if attempt + 1 == tries:
-                raise
-            time.sleep(1 * (attempt + 1))
+# Function to generate embeddings
+def generate_embeddings(docs: List, model: str = "text-embedding-3-large", chunk_size: int = 1000, chunk_overlap: int = 200) -> List[dict]:
+    chunks = chunk_documents(docs, chunk_size, chunk_overlap)
+    embedding_model = OpenAIEmbeddings(model=model)
+    for chunk in chunks:
+        chunk["embedding"] = embedding_model.embed_query(chunk["page_content"])
+    return chunks
+

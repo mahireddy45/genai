@@ -4,15 +4,15 @@ import os
 import tempfile
 import logging
 from pathlib import Path
-
-from .chroma_store import ChromaStore
-#from .pdf_loader import load_and_process_pdfs
-from .office_loader import load_docx
-from .image_loader import load_image
+from .document_loader import load_documents
 from .schemas import IngestedDocument
-from .embeddings import get_text_embeddings
+from .embeddings import generate_embeddings
+from .chroma_store import store_in_vector_db
 from .response_validation import validate_assistant_output
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from .logging_config import get_logger
+from config.secret import OPENAI_API_KEY
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 
 try:
@@ -20,11 +20,14 @@ try:
 except Exception:
     openai = None
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# Set API key from secret.py if not already in environment
+if not os.getenv("OPENAI_API_KEY") and OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 # Global ChatOpenAI instance (lazy-initialized). Use `init_chat_llm` to configure.
 chat_llm = None
-
 
 def init_chat_llm(llm_model: str = "gpt-4o", temperature: float = 0.0, max_tokens: int | None = None):
     """Initialize or reconfigure a global ChatOpenAI instance for reuse across the module.
@@ -54,122 +57,54 @@ def get_chat_llm(default_model: str = "gpt-4o", default_temp: float = 0.0, defau
 
 
 def init_vector_store_raw(db_path: str, embedding_model: str, collection_name: str) -> ChromaStore:
-    """Create or open a ChromaStore (no UI caching here)."""
+    logger.info("Initializing ChromaStore at %s with collection %s", db_path, collection_name)
     return ChromaStore(persist_directory=db_path, collection_name=collection_name)
 
 
-def _chunk_text_simple(text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> Iterable[Tuple[int, str]]:
-    start = 0
-    length = len(text)
-    idx = 1
-    while start < length:
-        end = min(start + chunk_size, length)
-        chunk = text[start:end].strip()
-        if chunk:
-            yield idx, chunk
-            idx += 1
-        start = max(end - chunk_overlap, end)
-
-
-def ingest_text_to_store(vector_store: ChromaStore, text: str, filename: str, embedding_model: str, chunk_size: int = 500, chunk_overlap: int = 50) -> int:
-    docs = []
-    for i, chunk in _chunk_text_simple(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap):
-        doc_id = f"{filename}::c{i}"
-        meta = {"filename": filename, "page": None, "source": filename, "text_length": len(chunk)}
-        d = {"id": doc_id, "text": chunk, "meta": meta}
-        try:
-            parsed = IngestedDocument.parse_obj(d)
-            docs.append(parsed.dict())
-        except Exception as e:
-            logger.warning("Skipping invalid chunk: %s", e)
-
-    if docs:
-        added = vector_store.add_documents(docs, model=embedding_model)
-        return added
-    return 0
-
-
-def process_uploaded_files(uploaded_files: List, vector_store: ChromaStore, embedding_model: str, chunk_size: int = 500, chunk_overlap: int = 50) -> int:
-    all_documents = []
-    for uploaded_file in uploaded_files:
-        suffix = Path(uploaded_file.name).suffix.lower()
-        # save to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
-            tmp_file.write(uploaded_file.getbuffer())
-            tmp_path = tmp_file.name
-
-        try:
-            if suffix == ".pdf":
-                docs = load_and_process_pdfs(tmp_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            elif suffix in [".txt", ".md"]:
-                # Load plain text files and chunk them into documents
-                docs = []
-                try:
-                    with open(tmp_path, "r", encoding="utf-8") as f:
-                        text = f.read()
-                except Exception:
-                    # fallback to binary decode
-                    with open(tmp_path, "rb") as f:
-                        text = f.read().decode("utf-8", errors="ignore")
-
-                for i, chunk in _chunk_text_simple(text, chunk_size=chunk_size, chunk_overlap=chunk_overlap):
-                    doc_id = f"{Path(uploaded_file.name).name}::c{i}"
-                    meta = {"filename": uploaded_file.name, "page": None, "source": uploaded_file.name, "text_length": len(chunk)}
-                    docs.append({"id": doc_id, "text": chunk, "meta": meta})
-            elif suffix == ".docx":
-                docs = load_docx(tmp_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            elif suffix in [".png", ".jpg", ".jpeg", ".tiff"]:
-                docs = load_image(tmp_path, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            else:
-                docs = []
-
-            all_documents.extend(docs)
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-
-    # Validate and add
-    validated = []
-    for d in all_documents:
-        try:
-            parsed = IngestedDocument.parse_obj(d)
-            validated.append(parsed.dict())
-        except Exception as e:
-            logger.warning("Skipping invalid document: %s", e)
-
-    if validated:
-        added = vector_store.add_documents(validated, model=embedding_model)
-        return added
-    return 0
-
-
-def process_directory(path: str, vector_store: ChromaStore, embedding_model: str, chunk_size: int = 500, chunk_overlap: int = 50) -> int:
-    """Process all PDFs in `path` (a directory or single file) and ingest.
-
-    Returns number of chunks added.
+def process_uploaded_files(uploaded_files: List, embedding_model: str, llm_model: str, db_path: str, chunk_size: int = 500, chunk_overlap: int = 50) -> tuple:
+    """Process uploaded files and store them in the vector database.
+    
+    Returns:
+        Tuple of (num_documents, num_chunks) successfully stored.
     """
-    docs = []
+    all_documents = []
+    logger.info("Loading and processing %d uploaded files", len(uploaded_files))
+    
     try:
-        docs = load_and_process_pdfs(path, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    except Exception:
-        logger.exception("Failed to load PDFs from directory: %s", path)
-        return 0
+        all_documents = load_documents(uploaded_files, llm_model)
+        logger.info("Loaded %d documents from files", len(all_documents))
+    except Exception as e:
+        logger.error("Failed to load documents: %s", e)
+        return (0, 0)
 
-    validated = []
-    for d in docs:
-        try:
-            parsed = IngestedDocument.parse_obj(d)
-            validated.append(parsed.dict())
-        except Exception as e:
-            logger.warning("Skipping invalid document: %s", e)
+    # Chunk and ingest documents
+    try:
+        chunks = generate_embeddings(all_documents, embedding_model, chunk_size, chunk_overlap)
+        logger.info("Generated %d chunks from documents", len(chunks))
+    except Exception as e:
+        logger.error("Failed to generate embeddings: %s", e)
+        return (len(all_documents), 0)
 
-    if validated:
-        added = vector_store.add_documents(validated, model=embedding_model)
-        return added
-    return 0
+    # Store in vector database
+    try:
+        stored_count = store_in_vector_db(chunks, db_path)
+        logger.info("Successfully stored %d chunks from %d documents in vector database", stored_count, len(all_documents))
+        return (len(all_documents), stored_count)
+    except Exception as e:
+        logger.error("Failed to store documents in vector database: %s", e)
+        return (len(all_documents), 0)
 
+
+def process_directory(path: str, embedding_model: str, llm_model: str, db_path: str, chunk_size: int = 500, chunk_overlap: int = 50) -> tuple:
+    """Process all files in a directory and store them in the vector database.
+    
+    Returns:
+        Tuple of (num_documents, num_chunks) successfully stored.
+    """
+    directory_path = Path(path)
+    uploaded_files = [str(f) for f in directory_path.glob("**/*") if f.is_file()]
+    logger.info("Found %d files in directory %s", len(uploaded_files), path)
+    return process_uploaded_files(uploaded_files, embedding_model, llm_model, db_path, chunk_size, chunk_overlap)
 
 def _prepare_context_from_results(results, n_retrieve: int):
     docs_texts = []

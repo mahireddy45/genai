@@ -4,24 +4,49 @@ from pathlib import Path
 import tempfile
 import os
 
+# Load API key from secret.py before anything else
+from config.secret import OPENAI_API_KEY
+if not os.getenv("OPENAI_API_KEY") and OPENAI_API_KEY:
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+
+# Configure logging
+from src.logging_config import setup_logging
+
+# Call once at startup
+setup_logging(
+    log_dir='./logs',
+    log_level='INFO',
+    module_levels={
+        'src.app_core': 'DEBUG',
+        'src.document_loader': 'DEBUG',
+        'src.image_loader': 'DEBUG',
+        'src.chroma_store': 'DEBUG',
+        'src.embeddings': 'INFO',
+        'src.schemas': 'WARNING',
+        'src.response_validation': 'INFO',
+    }
+)
+logger = logging.getLogger(__name__)
+
+# Quick validate OpenAI API key (if available) so user sees a clear message
+try:
+    from src.embeddings import validate_openai_key
+    ok = validate_openai_key()
+    if not ok:
+        st.warning("OpenAI API key not valid — embeddings requests will fail. Check `config/secret.py` or set the `OPENAI_API_KEY` environment variable.")
+        logger.error("OpenAI API key validation failed at startup")
+except Exception as e:
+    logger.debug("Could not validate OpenAI API key at startup: %s", e)
+
 from src.app_core import (
-    # init_vector_store_raw,
-    # process_uploaded_files,
-    # ingest_text_to_store,
-    # process_directory,
+    process_uploaded_files,
+    process_directory,
     answer_question,
     answer_without_context,
 )
 
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
 # Set page config
 st.set_page_config(page_title="RAG Chatbot", page_icon="📚", layout="wide")
-
 
 # Custom CSS (narrow)
 st.markdown(
@@ -34,15 +59,13 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-
 @st.cache_resource
 def init_vector_store(db_path: str, embedding_model: str, collection_name: str):
     return init_vector_store_raw(db_path, embedding_model, collection_name)
 
-
 def main():
     """Main Streamlit app."""
+    logger.info("Starting RAG Chatbot application")
     st.title("📚 RAG Chatbot")
 
     # Sidebar configuration
@@ -52,7 +75,7 @@ def main():
         # Database settings
         st.subheader("Vector Store")
         db_path = st.text_input("Database Path", value="./data/chroma_db")
-        collection_name = st.text_input("Collection Name", value="documents")
+        #collection_name = st.text_input("Collection Name", value="documents")
 
         # Embedding settings
         st.subheader("Embeddings")
@@ -132,21 +155,22 @@ def main():
                 accept_multiple_files=True,
                 help="Select one or more files to ingest"
             )
-
+            logger.info("DB Path: %s and Embedding Model: %s", db_path, embedding_model)
             if uploaded_files:
                 if st.button("📥 Ingest Uploaded Files"):
                     with st.spinner("Processing..."):
                         try:
-                            vector_store = init_vector_store(db_path, embedding_model, collection_name)
-                            added = process_uploaded_files(
+                            docs_count, chunks_count = process_uploaded_files(
                                 uploaded_files,
-                                vector_store,
                                 embedding_model,
+                                llm_backend,
+                                db_path,
                                 chunk_size=st.session_state.get("chunk_size", 500),
                                 chunk_overlap=st.session_state.get("chunk_overlap", 50),
                             )
-                            if added:
-                                st.success(f"✓ Added {added} document chunks")
+                            logger.info("Ingested %d documents into %d chunks from uploaded files", docs_count, chunks_count)
+                            if chunks_count > 0:
+                                st.success(f"✓ Added {docs_count} documents as {chunks_count} chunks")
                             else:
                                 st.error("No valid documents were added from the uploaded files")
                         except Exception as e:
@@ -155,8 +179,8 @@ def main():
 
         with col2:
             st.write("**Option 2: Ingest from Directory**")
-            pdf_directory = st.text_input(
-                "PDF Directory Path",
+            directory = st.text_input(
+                "Directory Path",
                 help="Full path to directory containing PDFs"
             )
 
@@ -167,16 +191,16 @@ def main():
             st.session_state.chunk_overlap = chunk_overlap
 
             if st.button("📥 Ingest from Directory"):
-                if not pdf_directory:
+                if not directory:
                     st.error("Please enter a directory path")
                 else:
                     with st.spinner("Processing PDFs..."):
                         try:
-                            vector_store = init_vector_store(db_path, embedding_model, collection_name)
                             added = process_directory(
                                 pdf_directory,
                                 vector_store,
                                 embedding_model,
+                                llm_backend,
                                 chunk_size=chunk_size,
                                 chunk_overlap=chunk_overlap,
                             )
