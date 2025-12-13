@@ -23,6 +23,7 @@ setup_logging(
         'src.embeddings': 'INFO',
         'src.schemas': 'WARNING',
         'src.response_validation': 'INFO',
+        'src.guardrail_helpers': 'INFO',
     }
 )
 logger = logging.getLogger(__name__)
@@ -42,7 +43,15 @@ except Exception as e:
 from src.app_core import (
     process_uploaded_files,
     process_directory,
-    create_simple_rag_chain,
+    create_simple_rag_chain
+)
+
+from src.guardrail_helpers import (
+    moderate_text,
+    validate_user_query,
+    check_pii_in_text,
+    log_audit_entry,
+    redact_pii
 )
 
 # Set page config
@@ -110,39 +119,82 @@ def main():
         question = st.chat_input("Ask a question ...")
 
         if question:
-            # Add user message to history
-            st.session_state.messages.append({"role": "user", "content": question})
+            # ========== GUARDRAIL CHECKS ==========
+            # 1. Validate query format and length
+            is_valid, validation_error = validate_user_query(question, max_len=1500)
+            if not is_valid:
+                st.error(f"❌ Query rejected: {validation_error}")
+                logger.warning(f"Query validation failed: {validation_error}")
+                log_audit_entry("query_rejected", {"reason": validation_error, "query": question[:100]})
+            else:
+                # 2. Check for PII in query
+                pii_detected = check_pii_in_text(question)
+                if pii_detected:
+                    st.warning(f"⚠️ Sensitive information detected in your query: {list(pii_detected.keys())}")
+                    logger.warning(f"PII detected in query: {pii_detected}")
+                    log_audit_entry("pii_detected_in_query", {"pii_types": list(pii_detected.keys())})
+                
+                # 3. Run moderation check on query
+                is_flagged, reasons = moderate_text(question, model = llm_backend)
+                if is_flagged:
+                    st.error(f"❌ Query flagged by content moderation: {', '.join(reasons)}")
+                    logger.warning(f"Query flagged by moderation: {reasons}")
+                    log_audit_entry("query_flagged_by_moderation", {"reasons": reasons, "query": question[:100]})
+                else:
+                    # ========== QUERY PASSED ALL GUARDRAILS - PROCEED ==========
+                    log_audit_entry("query_accepted", {"query": question[:100]})
+                    
+                    # Add user message to history
+                    st.session_state.messages.append({"role": "user", "content": question})
 
-            with st.chat_message("user"):
-                st.markdown(question)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("🤖 Thinking..."):
-                    try:
-                        logger.info("Generating grounded answer for question: %s with llm model: %s", question[:50], llm_backend)
-                        # Create RAG chain and invoke with question
-                        chain = create_simple_rag_chain(
-                            db_path, question, llm_backend, temperature, n_retrieve, max_tokens
-                        )
-                        
-                        # Use invoke() to get response
-                        response = chain.invoke({
-                            "context": "",
+                    with st.chat_message("user"):
+                        st.markdown(question)
+                    
+                    with st.chat_message("assistant"):
+                        with st.spinner("🤖 Thinking..."):
+                            try:
+                                logger.info("Generating grounded answer for question: %s with llm model: %s", question[:50], llm_backend)
+                                # Create RAG chain and invoke with question
+                                chain = create_simple_rag_chain(
+                                    db_path, question, llm_backend, temperature, n_retrieve, max_tokens
+                                )
+                                
+                                # Use invoke() to get response
+                                response = chain.invoke({
+                                    "context": "",
                             "question": question
                         })
                         
-                        # Extract answer text
-                        answer_text = response.content if hasattr(response, "content") else str(response)
-                        
-                        # Display answer
-                        st.markdown(answer_text)
-                        
-                        # Add assistant message to history
-                        st.session_state.messages.append({"role": "assistant", "content": answer_text})
-                    except Exception as e:
-                        error_msg = f"Error generating answer: {str(e)}"
-                        st.error(error_msg)
-                        logger.exception("Error in RAG chain invocation")
+                                # Extract answer text
+                                answer_text = response.content if hasattr(response, "content") else str(response)
+                                
+                                # Check for PII in response and redact if found
+                                pii_in_response = check_pii_in_text(answer_text)
+                                if pii_in_response:
+                                    logger.warning(f"PII detected in LLM response: {pii_in_response}")
+                                    st.warning(f"⚠️ Response contains sensitive information that will be redacted: {list(pii_in_response.keys())}")
+                                    safe_answer = redact_pii(answer_text)
+                                else:
+                                    safe_answer = answer_text
+                                
+                                # Log audit entry for successful response
+                                log_audit_entry("response_generated", {
+                                    "query": redact_pii(question[:1000]),
+                                    "response_length": len(answer_text),
+                                    "pii_detected": bool(pii_in_response),
+                                    "llm_model": llm_backend
+                                })
+                                
+                                # Display redacted answer
+                                st.markdown(safe_answer)
+                                
+                                # Add assistant message to history
+                                st.session_state.messages.append({"role": "assistant", "content": answer_text})
+                            except Exception as e:
+                                error_msg = f"Error generating answer: {str(e)}"
+                                st.error(error_msg)
+                                logger.exception("Error in RAG chain invocation")
+                                log_audit_entry("response_generation_error", {"error": str(e)[:100]})
     # Ingest Tab
     with tab2:
         st.subheader("Ingest Documents")
@@ -161,6 +213,21 @@ def main():
                 if st.button("📥 Ingest Uploaded Files"):
                     with st.spinner("Processing..."):
                         try:
+                            # ========== CHECK FOR PII IN DOCUMENTS ==========
+                            pii_warnings = {}
+                            for uploaded_file in uploaded_files:
+                                file_content = uploaded_file.read().decode('utf-8', errors='ignore')
+                                pii_found = check_pii_in_text(file_content)
+                                if pii_found:
+                                    pii_warnings[uploaded_file.name] = pii_found
+                            
+                            if pii_warnings:
+                                st.warning("⚠️ **PII Detected in Documents:**")
+                                for filename, pii_types in pii_warnings.items():
+                                    st.write(f"  • **{filename}**: {', '.join(pii_types)}")
+                                st.info("Ensure you have proper authorization before ingesting documents with sensitive information.")
+                                log_audit_entry("pii_detected_in_documents", {"documents": list(pii_warnings.keys()), "pii_types": list(set([t for types in pii_warnings.values() for t in types]))})
+                            
                             selected_model = embedding_model
                             docs_count, chunks_count = process_uploaded_files(
                                 uploaded_files,
