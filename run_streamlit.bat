@@ -20,8 +20,8 @@ IF "%OPENAI_API_KEY%"=="" (
   echo.
 )
 
-REM Set OpenAI API Key
-set OPENAI_API_KEY=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
+REM Optionally set your OpenAI API Key here (replace the placeholder)
+REM set OPENAI_API_KEY=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
 
 REM Run the Streamlit app
 echo  Launching application...

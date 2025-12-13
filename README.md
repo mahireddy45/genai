@@ -29,14 +29,13 @@ command 4: pip install -r requirements.txt
 Multiple ways to have api key
 Set environment variable
 To set the key 
-$env:OPENAI_API_KEY = "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"
+$env:OPENAI_API_KEY = "sk-proj-YOUR-ACTUAL-KEY-HERE"
 
 Or set permanently for your user:
-[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "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", "User")
+[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "sk-proj-YOUR-ACTUAL-KEY-HERE", "User")
 
 Create .env file adn add openaiapi key and use it
 .evn file content
 # OpenAI Configuration
 OPENAI_API_KEY=""
 
-use secret.py file and load it where ever you needed.

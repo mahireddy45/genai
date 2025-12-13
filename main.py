@@ -4,10 +4,9 @@ from pathlib import Path
 import tempfile
 import os
 
-# Load API key from secret.py before anything else
-from config.secret import OPENAI_API_KEY
-if not os.getenv("OPENAI_API_KEY") and OPENAI_API_KEY:
-    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+# Load .env file and set environment variables FIRST (before anything else)
+# This makes OPENAI_API_KEY available to all modules via os.getenv("OPENAI_API_KEY")
+from config.settings import OPENAI_API_KEY  # noqa: F401 - imported to trigger .env loading
 
 # Configure logging
 from src.logging_config import setup_logging
@@ -28,15 +27,15 @@ setup_logging(
 )
 logger = logging.getLogger(__name__)
 
+# logger.info("Using OpenAI API key: %s", OPENAI_API_KEY if OPENAI_API_KEY else "None")
+
 if 'qa_chain' not in st.session_state:
     st.session_state.qa_chain = None
+    
 # Quick validate OpenAI API key (if available) so user sees a clear message
 try:
     from src.embeddings import validate_openai_key
     ok = validate_openai_key()
-    if not ok:
-        st.warning("OpenAI API key not valid — embeddings requests will fail. Check `config/secret.py` or set the `OPENAI_API_KEY` environment variable.")
-        logger.error("OpenAI API key validation failed at startup")
 except Exception as e:
     logger.debug("Could not validate OpenAI API key at startup: %s", e)
 
@@ -59,10 +58,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-@st.cache_resource
-def init_vector_store(db_path: str, embedding_model: str, collection_name: str):
-    return init_vector_store_raw(db_path, embedding_model, collection_name)
 
 def main():
     """Main Streamlit app."""
@@ -120,14 +115,10 @@ def main():
             with st.chat_message("assistant"):
                 with st.spinner("🤖 Thinking..."):
                     try:
+                        logger.info("Generating grounded answer for question: %s with llm model: %s", question[:50], llm_backend)
                         # Create RAG chain and invoke with question
                         chain = create_simple_rag_chain(
-                            db_path=db_path,
-                            question=question,
-                            llm_model=llm_backend,
-                            temperature=temperature,
-                            n_retrieve=n_retrieve,
-                            max_tokens=max_tokens
+                            db_path, question, embedding_model, llm_backend, temperature, n_retrieve, max_tokens
                         )
                         
                         # Use invoke() to get response
@@ -203,8 +194,7 @@ def main():
                     with st.spinner("Processing PDFs..."):
                         try:
                             added = process_directory(
-                                pdf_directory,
-                                vector_store,
+                                directory,
                                 embedding_model,
                                 llm_backend,
                                 chunk_size=chunk_size,

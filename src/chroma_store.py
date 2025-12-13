@@ -8,9 +8,16 @@ from .logging_config import get_logger
 logger = get_logger(__name__)
 
 # Function to store chunks in Chroma vector store
-def store_in_vector_db(chunks: List[dict], persist_directory: str = "./db/chroma_db") -> int:
+def store_in_vector_db(chunks: List[dict], persist_directory: str, retrieval_model_name: str ) -> int:
+    logger.info("Storing chunks in vector database at: %s and embedding model %s", persist_directory, retrieval_model_name)
     """Store chunks in vector database and return count of chunks stored."""
-    vector_store = Chroma(persist_directory=persist_directory)
+    # Create embeddings instance with the same model used for ingestion
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not set in environment")
+    embeddings = OpenAIEmbeddings(model=retrieval_model_name, api_key=api_key)
+    
+    vector_store = Chroma(persist_directory=persist_directory, embedding_function=embeddings)
     stored_count = 0
     
     for chunk in chunks:
