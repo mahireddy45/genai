@@ -105,9 +105,9 @@ def create_simple_rag_chain(db_path: str, question: str, llm_model: str, tempera
         
         # Use context-grounded prompt from prompts module to ensure response is grounded
         # grounded_prompt_template = prompt_library.get_prompt("context_grounded")
-        # grounded_prompt_template = prompt_library.get_prompt("rag_qa")
+        grounded_prompt_template = prompt_library.get_prompt("rag_qa")
         # grounded_prompt_template = prompt_library.get_prompt("response_validation")
-        grounded_prompt_template = prompt_library.get_prompt("summarization")
+        # grounded_prompt_template = prompt_library.get_prompt("summarization")
         # grounded_prompt_template = prompt_library.get_prompt("clarification")
         
         if not grounded_prompt_template:

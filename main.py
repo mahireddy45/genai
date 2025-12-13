@@ -162,7 +162,7 @@ def main():
                                 # Use invoke() to get response
                                 response = chain.invoke({
                                     "context": "",
-                            "question": question
+                                    "question": question
                         })
                         
                                 # Extract answer text
