@@ -9,14 +9,13 @@ logger = logging.getLogger(__name__)
 # API key is loaded by config.settings from .env file
 # All modules can access it via os.getenv("OPENAI_API_KEY")
 
-def retrieve(query: str, k: int, db_path: str) -> List[Dict]:
-    retrieval_model_name = "text-embedding-3-small"
-    logger.info("Starting retrieval for query using embedding_model: %s", retrieval_model_name)
+def retrieve(query: str, n_retrieve: int, db_path: str, retrieval_model_name: str) -> List[Dict]:
+    logger.info("Starting retrieval for query using embedding_model: %s db_path: %s", retrieval_model_name, db_path)
     if not query.strip():
         logger.warning("Empty query received for retrieval.")
         return []
 
-    logger.info("Retrieving top-%d chunks for query: %s", k, query)
+    logger.info("Retrieving top-%d chunks for query: %s", n_retrieve, query)
 
     try:
         # Get API key from environment (set by config.settings)
@@ -33,7 +32,7 @@ def retrieve(query: str, k: int, db_path: str) -> List[Dict]:
             embedding_function=embeddings,
         )
 
-        results = vector_store.similarity_search(query, k=k)
+        results = vector_store.similarity_search(query, k=n_retrieve)
 
     except Exception as e:
         logger.error("Retrieval failed: %s", e)

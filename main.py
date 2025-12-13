@@ -80,7 +80,7 @@ def main():
         # LLM settings
         st.subheader("GPT Model")
         llm_backend = st.selectbox("LLM", ["gpt-4o", "gpt-3.5-turbo"]).lower()
-        device = st.radio("Device", ["CPU", "GPU"]).lower()
+        # device = st.radio("Device", ["CPU", "GPU"]).lower()
 
         # Generation settings
         st.subheader("Generation")

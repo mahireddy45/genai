@@ -132,7 +132,7 @@ def create_simple_rag_chain(db_path: str, question: str, embedding_model: str, l
         def get_context(q):
             try:
                 # Call retrieve function directly (it returns a list of chunks)
-                top_chunks = retrieve(query=q, k=n_retrieve, db_path=db_path)
+                top_chunks = retrieve(query=q, n_retrieve=n_retrieve, db_path=db_path, retrieval_model_name=embedding_model)
                 logger.info("Retrieved %d chunks for grounding response", len(top_chunks))
                 context = "\n\n".join([c.get("content", str(c)) for c in top_chunks if c])
                 if not context.strip():
