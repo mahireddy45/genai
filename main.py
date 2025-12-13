@@ -46,7 +46,7 @@ from src.app_core import (
 )
 
 # Set page config
-st.set_page_config(page_title="RAG Chatbot", page_icon="📚", layout="wide")
+st.set_page_config(page_title="Capstone - Enterprise RAG Assistant", page_icon="📚", layout="wide")
 
 # Custom CSS (narrow)
 st.markdown(
@@ -61,8 +61,8 @@ st.markdown(
 
 def main():
     """Main Streamlit app."""
-    logger.info("Starting RAG Chatbot application")
-    st.title("📚 RAG Chatbot")
+    logger.info("Starting Capstone - Enterprise RAG Assistant application")
+    st.title("📚 Capstone - Enterprise RAG Assistant")
 
     # Sidebar configuration
     with st.sidebar:
@@ -89,8 +89,8 @@ def main():
         # Generation settings
         st.subheader("Generation")
         n_retrieve = st.slider("Documents to Retrieve", 1, 10, 3)
-        max_tokens = st.slider("Max Tokens", 50, 1024, 256)
         temperature = st.slider("Temperature", 0.0, 2.0, 0.3, step=0.1)
+        max_tokens = st.slider("Max Tokens", 50, 1024, 256)
 
     # Main tabs
     tab1, tab2, tab3 = st.tabs(["💬 Chat", "📥 Ingest", "ℹ️ Info"]) 
