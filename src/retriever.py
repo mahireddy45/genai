@@ -9,13 +9,13 @@ logger = logging.getLogger(__name__)
 # API key is loaded by config.settings from .env file
 # All modules can access it via os.getenv("OPENAI_API_KEY")
 
-def retrieve(query: str, n_retrieve: int, db_path: str, retrieval_model_name: str) -> List[Dict]:
-    logger.info("Starting retrieval for query using embedding_model: %s db_path: %s", retrieval_model_name, db_path)
+def retrieve(query: str, k: int, db_path: str, embedding_model: str = "text-embedding-3-small") -> List[Dict]:
+    logger.info("Starting retrieval for query using embedding_model: %s db_path: %s", embedding_model, db_path)
     if not query.strip():
         logger.warning("Empty query received for retrieval.")
         return []
 
-    logger.info("Retrieving top-%d chunks for query: %s", n_retrieve, query)
+    logger.info("Retrieving top-%d chunks for query: %s", k, query)
 
     try:
         # Get API key from environment (set by config.settings)
@@ -24,15 +24,15 @@ def retrieve(query: str, n_retrieve: int, db_path: str, retrieval_model_name: st
             logger.error("OPENAI_API_KEY not found in environment")
             return []
         
-        # Explicitly pass API key to OpenAIEmbeddings with hardcoded text-embedding-3-small model
-        embeddings = OpenAIEmbeddings(model=retrieval_model_name, api_key=api_key)
+        # Explicitly pass API key to OpenAIEmbeddings with the configured model
+        embeddings = OpenAIEmbeddings(model=embedding_model, api_key=api_key)
 
         vector_store = Chroma(
             persist_directory=db_path,
             embedding_function=embeddings,
         )
 
-        results = vector_store.similarity_search(query, k=n_retrieve)
+        results = vector_store.similarity_search(query, k)
 
     except Exception as e:
         logger.error("Retrieval failed: %s", e)

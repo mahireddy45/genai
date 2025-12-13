@@ -69,15 +69,10 @@ Answer:""",
 CONTEXT_GROUNDED_PROMPT = ContextGroundedPrompt(
     name="context_grounded",
     description="Prompt ensuring response is grounded in provided context",
-    template="""Based ONLY on the following context, answer the question. Do not use external knowledge.
-If the answer is not in the context, say 'This information is not available in the provided context.'
-
-Context:
-{context}
-
-Question: {question}
-
-Answer:""",
+    template="""You are a helpful assistant. Answer the following question using ONLY the provided context. If the answer cannot be found in the context, explicitly say you don't have that information.
+    Context: {context}
+    Question: {question}
+    Answer:""",
     variables=["context", "question"],
     context_placeholder="{context}",
     question_placeholder="{question}"

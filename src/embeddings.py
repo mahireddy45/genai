@@ -91,15 +91,15 @@ def chunk_documents(documents, chunk_size, chunk_overlap) -> List[dict]:
     return chunks
 
 # Function to generate embeddings
-def generate_embeddings(docs: List, retrieval_model_name, chunk_size, chunk_overlap) -> List[dict]:
-    logger.info("Using embedding model for ingestion: %s", retrieval_model_name)
+def generate_embeddings(docs: List, chunk_size, chunk_overlap, embedding_model: str = "text-embedding-3-small") -> List[dict]:
+    logger.info("Using embedding model for ingestion: %s", embedding_model)
     logger.info("chucksize: %d, chunk_overlap: %d", chunk_size, chunk_overlap)
     chunks = chunk_documents(docs, chunk_size, chunk_overlap)
     # Explicitly pass API key to OpenAIEmbeddings
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY is not set in environment")
-    embedding_model = OpenAIEmbeddings(model=retrieval_model_name, api_key=api_key)
+    embeddings_instance = OpenAIEmbeddings(model=embedding_model, api_key=api_key)
     for chunk in chunks:
-        chunk["embedding"] = embedding_model.embed_query(chunk["page_content"])
+        chunk["embedding"] = embeddings_instance.embed_query(chunk["page_content"])
     return chunks

@@ -3,13 +3,14 @@ import logging
 import logging.handlers
 from pathlib import Path
 from typing import Dict, Optional
+from datetime import datetime
 
 
 def setup_logging(log_dir: str = "./logs", log_level: str = "INFO", module_levels: Optional[Dict[str, str]] = None, rotate_bytes: int = 10 * 1024 * 1024, backup_count: int = 5):
     """Configure root logging for the application.
 
     - Creates `log_dir` if missing
-    - Adds a rotating file handler and a console handler
+    - Adds a file handler with datetime in filename and a console handler
     - Allows overriding log level per-module via `module_levels` dict
 
     Args:
@@ -31,8 +32,12 @@ def setup_logging(log_dir: str = "./logs", log_level: str = "INFO", module_level
 
     # Add file handler if not present
     if not has_file_handler:
+        # Create log filename with datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = f"app_{timestamp}.log"
+        
         file_handler = logging.handlers.RotatingFileHandler(
-            filename=str(p / "app.log"), maxBytes=rotate_bytes, backupCount=backup_count, encoding="utf-8"
+            filename=str(p / log_filename), maxBytes=rotate_bytes, backupCount=backup_count, encoding="utf-8"
         )
         file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(

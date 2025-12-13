@@ -75,7 +75,11 @@ def main():
 
         # Embedding settings
         st.subheader("Embeddings")
-        embedding_model = st.selectbox("Embedding Model", ["text-embedding-3-small", "text-embedding-3-large"])
+        embedding_model = st.selectbox(
+            "Select Embedding Model",
+            ["text-embedding-3-small", "text-embedding-3-large"],
+            help="Choose the embedding model to use"
+        )        
 
         # LLM settings
         st.subheader("GPT Model")
@@ -86,7 +90,7 @@ def main():
         st.subheader("Generation")
         n_retrieve = st.slider("Documents to Retrieve", 1, 10, 3)
         max_tokens = st.slider("Max Tokens", 50, 1024, 256)
-        temperature = st.slider("Temperature", 0.0, 2.0, 0.7, step=0.1)
+        temperature = st.slider("Temperature", 0.0, 2.0, 0.3, step=0.1)
 
     # Main tabs
     tab1, tab2, tab3 = st.tabs(["💬 Chat", "📥 Ingest", "ℹ️ Info"]) 
@@ -118,7 +122,7 @@ def main():
                         logger.info("Generating grounded answer for question: %s with llm model: %s", question[:50], llm_backend)
                         # Create RAG chain and invoke with question
                         chain = create_simple_rag_chain(
-                            db_path, question, embedding_model, llm_backend, temperature, n_retrieve, max_tokens
+                            db_path, question, llm_backend, temperature, n_retrieve, max_tokens
                         )
                         
                         # Use invoke() to get response
@@ -157,9 +161,10 @@ def main():
                 if st.button("📥 Ingest Uploaded Files"):
                     with st.spinner("Processing..."):
                         try:
+                            selected_model = embedding_model
                             docs_count, chunks_count = process_uploaded_files(
                                 uploaded_files,
-                                embedding_model,
+                                selected_model,
                                 llm_backend,
                                 db_path,
                                 chunk_size=st.session_state.get("chunk_size", 500),
