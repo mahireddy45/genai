@@ -50,7 +50,6 @@ def get_chat_llm(default_model: str = "gpt-4o", default_temp: float = 0.0, defau
         return init_chat_llm(default_model, default_temp, default_max_tokens)
     return chat_llm
 
-
 def process_uploaded_files(uploaded_files: List, embedding_model: str, llm_model: str, db_path: str, chunk_size: int = 500, chunk_overlap: int = 50) -> tuple:
     
     logger.info("chuck_size: %d, chunk_overlap: %d", chunk_size, chunk_overlap)

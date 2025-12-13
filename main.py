@@ -28,7 +28,7 @@ setup_logging(
 )
 logger = logging.getLogger(__name__)
 
-# logger.info("Using OpenAI API key: %s", OPENAI_API_KEY if OPENAI_API_KEY else "None")
+logger.info("Using OpenAI API key: %s", OPENAI_API_KEY if OPENAI_API_KEY else "None")
 
 if 'qa_chain' not in st.session_state:
     st.session_state.qa_chain = None
@@ -42,7 +42,7 @@ except Exception as e:
 
 from src.app_core import (
     process_uploaded_files,
-    process_directory,
+    # process_directory,
     create_simple_rag_chain
 )
 
@@ -198,95 +198,99 @@ def main():
     # Ingest Tab
     with tab2:
         st.subheader("Ingest Documents")
-        col1, col2 = st.columns([1, 1])
+        # col1, col2 = st.columns([1, 1])
 
-        with col1:
-            st.write("**Option 1: Upload Files**")
-            uploaded_files = st.file_uploader(
-                "Upload files (PDF, DOCX, TXT, images)",
-                type=["pdf", "docx", "png", "jpg", "jpeg", "tiff", "txt", "md", "doc"],
-                accept_multiple_files=True,
-                help="Select one or more files to ingest"
-            )
-            logger.info("DB Path: %s and Embedding Model: %s", db_path, embedding_model)
-            if uploaded_files:
-                if st.button("📥 Ingest Uploaded Files"):
-                    with st.spinner("Processing..."):
-                        try:
-                            # ========== CHECK FOR PII IN DOCUMENTS ==========
-                            pii_warnings = {}
-                            for uploaded_file in uploaded_files:
-                                file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-                                pii_found = check_pii_in_text(file_content)
-                                if pii_found:
-                                    pii_warnings[uploaded_file.name] = pii_found
-                            
-                            if pii_warnings:
-                                st.warning("⚠️ **PII Detected in Documents:**")
-                                for filename, pii_types in pii_warnings.items():
-                                    st.write(f"  • **{filename}**: {', '.join(pii_types)}")
-                                st.info("Ensure you have proper authorization before ingesting documents with sensitive information.")
-                                log_audit_entry("pii_detected_in_documents", {"documents": list(pii_warnings.keys()), "pii_types": list(set([t for types in pii_warnings.values() for t in types]))})
-                            
-                            selected_model = embedding_model
-                            docs_count, chunks_count = process_uploaded_files(
-                                uploaded_files,
-                                selected_model,
-                                llm_backend,
-                                db_path,
-                                chunk_size=st.session_state.get("chunk_size", 500),
-                                chunk_overlap=st.session_state.get("chunk_overlap", 50),
-                            )
-                            logger.info("Ingested %d documents into %d chunks from uploaded files", docs_count, chunks_count)
-                            if chunks_count > 0:
-                                st.success(f"✓ Added {docs_count} documents as {chunks_count} chunks")
-                            else:
-                                st.error("No valid documents were added from the uploaded files")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                            logger.exception("Error ingesting files")
+        # with col1:
+        st.write("**Option 1: Upload Files**")
+        uploaded_files = st.file_uploader(
+            "Upload files (PDF, DOCX, TXT, images)",
+            type=["pdf", "docx", "png", "jpg", "jpeg", "tiff", "txt", "md", "doc"],
+            accept_multiple_files=True,
+            help="Select one or more files to ingest"
+        )
+        chunk_size = st.number_input("Chunk Size", value=500, min_value=100)
+        chunk_overlap = st.number_input("Chunk Overlap", value=50, min_value=0)
 
-        with col2:
-            st.write("**Option 2: Ingest from Directory**")
-            directory = st.text_input(
-                "Directory Path",
-                help="Full path to directory containing PDFs"
-            )
+        st.session_state.chunk_size = chunk_size
+        st.session_state.chunk_overlap = chunk_overlap
+        logger.info("DB Path: %s and Embedding Model: %s", db_path, embedding_model)
+        if uploaded_files:
+            if st.button("📥 Ingest Uploaded Files"):
+                with st.spinner("Processing..."):
+                    try:
+                        # ========== CHECK FOR PII IN DOCUMENTS ==========
+                        pii_warnings = {}
+                        for uploaded_file in uploaded_files:
+                            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
+                            pii_found = check_pii_in_text(file_content)
+                            if pii_found:
+                                pii_warnings[uploaded_file.name] = pii_found
+                        
+                        if pii_warnings:
+                            st.warning("⚠️ **PII Detected in Documents:**")
+                            for filename, pii_types in pii_warnings.items():
+                                st.write(f"  • **{filename}**: {', '.join(pii_types)}")
+                            st.info("Ensure you have proper authorization before ingesting documents with sensitive information.")
+                            log_audit_entry("pii_detected_in_documents", {"documents": list(pii_warnings.keys()), "pii_types": list(set([t for types in pii_warnings.values() for t in types]))})
+                        
+                        selected_model = embedding_model
+                        docs_count, chunks_count = process_uploaded_files(
+                            uploaded_files,
+                            selected_model,
+                            llm_backend,
+                            db_path,
+                            chunk_size=st.session_state.get("chunk_size", 500),
+                            chunk_overlap=st.session_state.get("chunk_overlap", 50),
+                        )
+                        logger.info("Ingested %d documents into %d chunks from uploaded files", docs_count, chunks_count)
+                        if chunks_count > 0:
+                            st.success(f"✓ Added {docs_count} documents as {chunks_count} chunks")
+                        else:
+                            st.error("No valid documents were added from the uploaded files")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                        logger.exception("Error ingesting files")
 
-            chunk_size = st.number_input("Chunk Size", value=500, min_value=100)
-            chunk_overlap = st.number_input("Chunk Overlap", value=50, min_value=0)
+        # with col2:
+        #     st.write("**Option 2: Ingest from Directory**")
+        #     directory = st.text_input(
+        #         "Directory Path",
+        #         help="Full path to directory containing PDFs"
+        #     )
 
-            st.session_state.chunk_size = chunk_size
-            st.session_state.chunk_overlap = chunk_overlap
+        #     chunk_size = st.number_input("Chunk Size", value=500, min_value=100)
+        #     chunk_overlap = st.number_input("Chunk Overlap", value=50, min_value=0)
 
-            if st.button("📥 Ingest from Directory"):
-                if not directory:
-                    st.error("Please enter a directory path")
-                else:
-                    with st.spinner("Processing PDFs..."):
-                        try:
-                            added = process_directory(
-                                directory,
-                                embedding_model,
-                                llm_backend,
-                                chunk_size=chunk_size,
-                                chunk_overlap=chunk_overlap,
-                            )
-                            if added:
-                                st.success(f"✓ Added {added} document chunks")
-                            else:
-                                st.error("No valid documents found or added from directory")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-                            logger.exception("Error ingesting directory")
+        #     st.session_state.chunk_size = chunk_size
+        #     st.session_state.chunk_overlap = chunk_overlap
+
+        #     if st.button("📥 Ingest from Directory"):
+        #         if not directory:
+        #             st.error("Please enter a directory path")
+        #         else:
+        #             with st.spinner("Processing PDFs..."):
+        #                 try:
+        #                     added = process_directory(
+        #                         directory,
+        #                         embedding_model,
+        #                         llm_backend,
+        #                         chunk_size=chunk_size,
+        #                         chunk_overlap=chunk_overlap,
+        #                     )
+        #                     if added:
+        #                         st.success(f"✓ Added {added} document chunks")
+        #                     else:
+        #                         st.error("No valid documents found or added from directory")
+        #                 except Exception as e:
+        #                     st.error(f"Error: {e}")
+        #                     logger.exception("Error ingesting directory")
 
     # Info Tab
     # with tab3:
     #     st.subheader("System Information")
 
     #     try:
-    #         vector_store = init_vector_store(db_path, embedding_model, collection_name)
-    #         info = vector_store.get_collection_info()
+    #         vector_store = init_vector_store(db_path, embedding_model)
 
     #         col1, col2, col3 = st.columns(3)
 
