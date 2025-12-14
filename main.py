@@ -201,7 +201,7 @@ def main():
         # col1, col2 = st.columns([1, 1])
 
         # with col1:
-        st.write("**Option 1: Upload Files**")
+        st.write("**Upload Files**")
         uploaded_files = st.file_uploader(
             "Upload files (PDF, DOCX, TXT, images)",
             type=["pdf", "docx", "png", "jpg", "jpeg", "tiff", "txt", "md", "doc"],
@@ -218,21 +218,6 @@ def main():
             if st.button("📥 Ingest Uploaded Files"):
                 with st.spinner("Processing..."):
                     try:
-                        # ========== CHECK FOR PII IN DOCUMENTS ==========
-                        pii_warnings = {}
-                        for uploaded_file in uploaded_files:
-                            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-                            pii_found = check_pii_in_text(file_content)
-                            if pii_found:
-                                pii_warnings[uploaded_file.name] = pii_found
-                        
-                        if pii_warnings:
-                            st.warning("⚠️ **PII Detected in Documents:**")
-                            for filename, pii_types in pii_warnings.items():
-                                st.write(f"  • **{filename}**: {', '.join(pii_types)}")
-                            st.info("Ensure you have proper authorization before ingesting documents with sensitive information.")
-                            log_audit_entry("pii_detected_in_documents", {"documents": list(pii_warnings.keys()), "pii_types": list(set([t for types in pii_warnings.values() for t in types]))})
-                        
                         selected_model = embedding_model
                         docs_count, chunks_count = process_uploaded_files(
                             uploaded_files,
