@@ -17,8 +17,9 @@
 6. [Retriever](#5-retriever)
 7. [Chains & Agents](#6-chains--agents)
 8. [Memory](#7-memory)
-9. [Complete RAG Flow](#complete-rag-flow)
-10. [Configuration Reference](#configuration-reference)
+9. [Guardrails & Safety](#8-guardrails--safety)
+10. [Complete RAG Flow](#complete-rag-flow)
+11. [Configuration Reference](#configuration-reference)
 
 ---
 
@@ -759,6 +760,365 @@ session2 = manager.create_session()
 
 # Save all sessions
 manager.export_all_sessions()
+```
+
+---
+
+## 8. 🛡️ Guardrails & Safety
+
+### What They Are
+
+Guardrails are safety mechanisms that validate, filter, and monitor both user inputs and AI outputs to ensure the system operates safely, securely, and compliantly.
+
+### Why Guardrails Matter
+
+In enterprise RAG systems, guardrails protect against:
+- **Security threats:** Malicious queries, injection attacks
+- **Privacy violations:** Accidental exposure of sensitive data
+- **Compliance issues:** GDPR, HIPAA violations with PII
+- **Content risks:** Harmful, hateful, or inappropriate responses
+- **System abuse:** Excessively long queries, spam
+
+### In Your Project
+
+**Location:** `src/guardrail_helpers.py`
+
+**Main Functions:**
+```python
+def validate_user_query(query, max_len=1500)
+def check_pii_in_text(text)
+def redact_pii(text)
+def moderate_text(text, model="gpt-4o")
+def log_audit_entry(event_type, payload)
+```
+
+---
+
+### 1. Query Validation
+
+**What:** Validates user input format and safety.
+
+**Checks:**
+- Length validation (max 1500 characters)
+- Banned keywords detection
+- Format compliance
+
+**Code:**
+```python
+def validate_user_query(query, max_len=1500):
+    """
+    Validate user query for length and banned keywords.
+    
+    Args:
+        query: User input string
+        max_len: Maximum allowed length
+    
+    Returns:
+        (is_valid, error_message)
+    """
+    if len(query) > max_len:
+        return False, f"Query exceeds {max_len} characters"
+    
+    banned_keywords = ["rm -rf", "DROP TABLE", "eval(", "__import__"]
+    for keyword in banned_keywords:
+        if keyword.lower() in query.lower():
+            return False, f"Banned keyword detected: {keyword}"
+    
+    return True, ""
+```
+
+**When Used:**
+- Before any processing of user query
+- Returns error if validation fails
+- User sees clear error message
+
+---
+
+### 2. PII (Personally Identifiable Information) Detection
+
+**What:** Detects sensitive information like emails, SSNs, credit cards, phone numbers.
+
+**Patterns Detected:**
+```
+Email: john.doe@company.com
+SSN: 123-45-6789
+Credit Card: 4532-1234-5678-9101
+Phone: (555) 123-4567
+```
+
+**Code:**
+```python
+def check_pii_in_text(text):
+    """
+    Detect PII in text using regex patterns.
+    
+    Args:
+        text: Text to check
+    
+    Returns:
+        Dictionary of {pii_type: count}
+    """
+    pii_patterns = {
+        "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
+        "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+        "phone": r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b'
+    }
+    
+    detected = {}
+    for pii_type, pattern in pii_patterns.items():
+        matches = re.findall(pattern, text)
+        if matches:
+            detected[pii_type] = len(matches)
+    
+    return detected
+```
+
+**Where Applied:**
+
+| Stage | Action |
+|-------|--------|
+| **Input (User Query)** | ⚠️ Warn user, then log audit |
+| **Output (LLM Response)** | 🔴 Redact before display |
+
+---
+
+### 3. PII Redaction
+
+**What:** Automatically replaces detected PII with `[REDACTED]` tokens.
+
+**Code:**
+```python
+def redact_pii(text):
+    """
+    Replace PII with [REDACTED] tags.
+    
+    Args:
+        text: Text to redact
+    
+    Returns:
+        Text with PII replaced
+    """
+    patterns = {
+        "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
+        "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+        "phone": r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b'
+    }
+    
+    redacted = text
+    for pii_type, pattern in patterns.items():
+        redacted = re.sub(pattern, '[REDACTED]', redacted)
+    
+    return redacted
+```
+
+**When Applied:**
+- LLM responses before displaying to user
+- Audit log entries for compliance
+
+**Example:**
+```
+Original: "John Smith's email john@company.com and phone (555) 123-4567"
+Redacted: "John Smith's email [REDACTED] and phone [REDACTED]"
+```
+
+---
+
+### 4. Content Moderation
+
+**What:** Uses OpenAI's moderation API to check for harmful content.
+
+**Flags:**
+- Violence and self-harm
+- Sexual content
+- Hate speech
+- Harassment and bullying
+- Illegal activities
+
+**Code:**
+```python
+def moderate_text(text, model="gpt-4o"):
+    """
+    Check text against OpenAI's moderation API.
+    
+    Args:
+        text: Text to moderate
+        model: LLM model to use
+    
+    Returns:
+        (is_flagged, reasons_list)
+    """
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    
+    response = client.moderations.create(input=text)
+    
+    if response.results[0].flagged:
+        categories = response.results[0].categories
+        flagged_categories = [
+            category for category, flagged in categories
+            if flagged
+        ]
+        return True, flagged_categories
+    
+    return False, []
+```
+
+**When Used:**
+- User query input (before processing)
+- LLM response output (as safety check)
+
+---
+
+### 5. Audit Logging
+
+**What:** Records all security events and system activity for compliance and debugging.
+
+**Logged Events:**
+```
+- query_accepted: Valid query processed
+- query_rejected: Query failed validation
+- pii_detected_in_query: PII found in user input
+- pii_detected_in_response: PII found in LLM output
+- response_generated: Successful LLM response
+- response_generation_error: Error during processing
+```
+
+**Code:**
+```python
+def log_audit_entry(event_type, payload):
+    """
+    Log security event to audit trail.
+    
+    Args:
+        event_type: Type of event
+        payload: Event details dictionary
+    """
+    audit_logger = logging.getLogger("audit")
+    
+    # Redact PII from payload before logging
+    safe_payload = {}
+    for key, value in payload.items():
+        if isinstance(value, str):
+            safe_payload[key] = redact_pii(value)
+        else:
+            safe_payload[key] = value
+    
+    audit_logger.info(
+        f"EVENT={event_type}|PAYLOAD={safe_payload}|TIMESTAMP={datetime.now()}"
+    )
+```
+
+**Log Location:** `./audit.log`
+
+---
+
+### Complete Guardrail Flow
+
+```
+USER INPUT (Question)
+    ↓
+[1] Query Validation
+    ├─ Check length (max 1500 chars)
+    ├─ Check for banned keywords
+    └─ ❌ If fails → Error & Return
+    ↓
+[2] PII Detection
+    ├─ Scan for emails, SSN, credit cards, phones
+    └─ ⚠️ Warn user but continue
+    ↓
+[3] Content Moderation
+    ├─ Send to OpenAI moderation API
+    └─ ❌ If flagged → Error & Return
+    ↓
+[4] Log Audit Entry
+    └─ Record: query_accepted
+    ↓
+✅ QUERY PASSED ALL GUARDRAILS
+    ↓
+[RAG PROCESSING]
+    ↓
+LLM RESPONSE
+    ↓
+[5] PII Detection on Response
+    ├─ Scan for PII
+    └─ 🔴 Redact if found
+    ↓
+[6] Display to User
+    └─ Show redacted response only
+    ↓
+[7] Log Audit Entry
+    └─ Record: response_generated
+```
+
+---
+
+### Guardrails in Your Code
+
+**In main.py - Chat Tab:**
+
+```python
+if question:
+    # 1. Validate query
+    is_valid, validation_error = validate_user_query(question, max_len=1500)
+    if not is_valid:
+        st.error(f"❌ Query rejected: {validation_error}")
+    else:
+        # 2. Check for PII
+        pii_detected = check_pii_in_text(question)
+        if pii_detected:
+            st.warning(f"⚠️ Sensitive information detected: {list(pii_detected.keys())}")
+        
+        # 3. Run moderation
+        is_flagged, reasons = moderate_text(question)
+        if is_flagged:
+            st.error(f"❌ Query flagged: {', '.join(reasons)}")
+        else:
+            # ✅ All checks passed
+            log_audit_entry("query_accepted", {"query": question[:100]})
+            
+            # Generate response...
+            response = llm.invoke(...)
+            
+            # Check PII in response
+            pii_in_response = check_pii_in_text(response)
+            if pii_in_response:
+                safe_response = redact_pii(response)
+            
+            # Display safe response
+            st.write(safe_response)
+```
+
+---
+
+### Best Practices for Guardrails
+
+1. **Always validate input** before processing
+2. **Log everything** for audit trails
+3. **Redact PII** before displaying responses
+4. **Monitor logs** regularly for security events
+5. **Update patterns** as new threats emerge
+6. **Test guardrails** with edge cases
+7. **Inform users** when queries are rejected with clear reasons
+
+---
+
+### Guardrail Configuration
+
+**In guardrail_helpers.py:**
+
+```python
+# Query validation settings
+MAX_QUERY_LENGTH = 1500
+BANNED_KEYWORDS = ["rm -rf", "DROP TABLE", "eval(", "__import__"]
+
+# PII detection patterns
+PII_PATTERNS = {
+    "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+    "ssn": r'\b\d{3}-\d{2}-\d{4}\b',
+    "credit_card": r'\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b',
+    "phone": r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b'
+}
 ```
 
 ---
